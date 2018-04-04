@@ -1,0 +1,30 @@
+{
+  "name": "echo",
+  "version": "0.0.1",
+  "dependencies": {
+    "bufferutil": "^3.0.0",
+    "discord.js": "^11.1.0",
+    "erlpack": "github:hammerandchisel/erlpack",
+    "libsodium-wrappers": "^0.5.1",
+    "node-opus": "^0.2.6",
+    "opusscript": "^0.0.3",
+    "sodium": "^2.0.1",
+    "uws": "^0.14.1"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "description": "A logging bot with some moderation functionality",
+  "main": "index.js",
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaineBannister/echo.git"
+  },
+  "author": "Raine Bannister",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RaineBannister/echo/issues"
+  },
+  "homepage": "https://github.com/RaineBannister/echo#readme"
+}
