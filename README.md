@@ -1,1 +1,1 @@
-CoolTestsServer
+Echo Discord Bot
