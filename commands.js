@@ -185,6 +185,33 @@ commands.push(
 
 commands.push(
     new Command(
+        'warnings',
+        '<@user>',
+        'Warns a user',
+        [],
+        [],
+        function(message, args, db) {
+            if (message.mentions.members.array().length === 1) {
+                let mention = message.mentions.members.array()[0];
+                let member = db.servers[message.guild.id].members[mention.id];
+
+                if(member.warnings === undefined) member.warnings = [];
+                let warns = member.warnings;
+
+                let ret = "Beep, Boop! Here are their warnings!\n```";
+                for(let i = 0; i < warns.length; i ++) {
+                    ret += "  ◘ " + warns[i] + "\n";
+                }
+                ret += "```";
+            } else {
+                message.channel.send("No user mentioned!");
+            }
+        }
+    )
+);
+
+commands.push(
+    new Command(
         'setinfo',
         '[text...]',
         'Lets you set info about yourself',
