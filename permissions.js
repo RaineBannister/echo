@@ -10,6 +10,7 @@ const PERMISSIONS = {
     'REVOKE': 5,
     'WARN': 6,
     'PERMISSIONS': 7,
+    'CLEAR': 8,
 };
 
 module.exports = PERMISSIONS;

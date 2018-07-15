@@ -73,20 +73,23 @@ class JSONDatabase {
      */
     server(id) {
         let temp = this.getServer(id);
-        return new Server(temp.id, temp.message, temp.mutes, this);
+        return new Server(temp.id, temp.message, temp.mutes, temp.welcomeChannel, temp.logChannel, this);
     }
 
     /**
      *
-     * @returns {Array.<Server>}
+     * @returns {Object.<Server>}
      */
     get servers() {
-        let array = [];
+        let array = {};
         let db = this;
         let servers = this.data.servers;
-        servers.forEach(function(server){
-            array[server.id] = new Server(server.id, server.message, server.mutes, db);
-        });
+        for(let i = 0; i < servers.length; i++) {
+            let server = servers[i];
+            if(array[server.id] === undefined) {
+                array[server.id] = new Server(server.id, server.welcome, server.mutes, server.welcomeChannel, server.logChannel, server.availableRoles, db);
+            }
+        }
         return array;
     }
 }
@@ -97,12 +100,17 @@ class Server {
      * @param {number} id
      * @param {string} welcome
      * @param {Array.<number>} mutes
+     * @param {number} welcomeChannel
+     * @param {number} logChannel
      * @param {JSONDatabase} db
      */
-    constructor(id, welcome, mutes, db) {
+    constructor(id, welcome, mutes, welcomeChannel, logChannel, availableRoles, db) {
         this._id = id;
         this._welcome = welcome;
         this._mutes = mutes;
+        this._welcomeChannel = welcomeChannel;
+        this._logChannel = logChannel;
+        this._availableRoles = availableRoles;
         this._db = db;
     }
 
@@ -148,6 +156,55 @@ class Server {
      */
     get welcome() {
         return this._message;
+    }
+
+    /**
+     *
+     * @param {number} welcomeChannel
+     */
+    set welcomeChannel(welcomeChannel) {
+        this._welcomeChannel = welcomeChannel;
+        let server = this._db.getServer(this._id);
+        server.welcomeChannel = welcomeChannel;
+        this._db.save();
+    }
+
+    /**
+     *
+     * @returns {number}
+     */
+    get welcomeChannel() {
+        return this._welcomeChannel;
+    }
+
+    /**
+     *
+     * @param {number} logChannel
+     */
+    set logChannel(logChannel) {
+        this._logChannel = logChannel;
+        let server = this._db.getServer(this._id);
+        server.logChannel = logChannel;
+        this._db.save();
+    }
+
+    /**
+     *
+     * @returns {number}
+     */
+    get logChannel() {
+        return this._logChannel;
+    }
+
+    set availableRoles(roles) {
+        this._availableRoles = roles;
+        let server = this._db.getServer(this._id);
+        server.availableRoles = roles;
+        this._db.save();
+    }
+
+    get availableRoles() {
+        return this._availableRoles;
     }
 }
 

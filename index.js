@@ -11,6 +11,7 @@ const Commands = require("./commands.js");
 const PERMISSIONS = require('./permissions.js');
 const JSONDatabase = require('./data.js');
 const client = new Discord.Client();
+let fs = require('fs');
 const config = JSON.parse(fs.readFileSync('config.json'));
 
 const token = config.key;
@@ -47,7 +48,7 @@ client.on('ready', ()=> {
 });
 
 client.on('message', message => {
-    if(message.channel.name !== 'logs' && message.channel.type === 'text') {
+    if(message.channel.type === 'text') {
         if(message.content.charAt(0) === '!') {
             let args = message.content.substr(1).split(' ');
             let com = args[0].replace('!','');
@@ -110,14 +111,17 @@ client.on('message', message => {
         }
 
         //log the message
-        let logChannel = message.guild.channels.find('name', 'logs');
-        if(logChannel !== undefined) {
-            let log = '[' + message.channel.name + '] [' + message.author.username + '] ' + message.cleanContent;
-            for(let i = 0; i < message.attachments.array().length; i ++) {
-                log += message.attachments.array()[i].url + "\n";
+        if(db.servers[message.guild.id].logChannel !== undefined && !message.author.bot) {
+            let logChannel = message.guild.channels.get(db.servers[message.guild.id].logChannel);
+            if(logChannel !== undefined) {
+                let log = '[' + message.channel.name + '] [' + message.author.username + '] ' + message.cleanContent;
+                for(let i = 0; i < message.attachments.array().length; i ++) {
+                    log += message.attachments.array()[i].url + "\n";
+                }
+                logChannel.send(log);
             }
-            logChannel.send(log);
         }
+
         //add user to data if needed
         for(let i = 0; i < db.data.servers.length; i++) {
             if(message.guild.id === db.data.servers[i].id) {
@@ -150,11 +154,11 @@ client.on('message', message => {
 
 client.on('messageUpdate', (oldMessage, message) => {
     //log the message
-    if(message.channel.name !== 'logs') {
-        let logChannel = message.guild.channels.find('name', 'logs');
-        if (logChannel !== undefined) {
-            let log = '[' + message.channel.name + '] [' + message.author.username + '][edited] ' + message.content.replace('@', '');
-            for (let i = 0; i < message.attachments.array().length; i++) {
+    if(db.servers[message.guild.id].logChannel !== undefined && !message.author.bot) {
+        let logChannel = message.guild.channels.get(db.servers[message.guild.id].logChannel);
+        if(logChannel !== undefined) {
+            let log = '[' + message.channel.name + '] [' + message.author.username + '] ' + message.cleanContent;
+            for(let i = 0; i < message.attachments.array().length; i ++) {
                 log += message.attachments.array()[i].url + "\n";
             }
             logChannel.send(log);
@@ -163,15 +167,7 @@ client.on('messageUpdate', (oldMessage, message) => {
 });
 // Create an event listener for new guild members
 client.on('guildMemberAdd', member => {
-    // Send the message to the guilds default channel (usually #general), mentioning the member
-	try {
-		member.guild.defaultChannel.send('Beep, Boop! Welcome, ' + member.displayName + '!');
-		let s = db.servers[member.guild.id];
-		if(s !== undefined && s.welcome !== undefined && s.welcome !== "") {
-            member.send(s.welcome);
-        }
 
-	} catch(e) {}
 	let dbMember = db.servers[member.guild.id].members[member.id];
     if(dbMember !== undefined) {
 		if(dbMember.roles === undefined) return;
@@ -199,12 +195,32 @@ client.on('guildMemberAdd', member => {
             db.save();
         }
     }
+
+    try {
+        if(db.servers[member.guild.id].welcomeChannel !== undefined) {
+            let welcomeChannel = member.guild.channels.get(db.servers[member.guild.id].welcomeChannel);
+            if(welcomeChannel !== undefined) {
+                welcomeChannel.send('Beep, Boop! Welcome, ' + member.displayName + '!');
+            }
+        }
+
+        let s = db.servers[member.guild.id];
+        if(s !== undefined && s.welcome !== undefined && s.welcome !== "") {
+            member.send(s.welcome);
+        }
+
+    } catch(e) {}
 });
 
 client.on('guildMemberRemove', member => {
     // Send the message to the guilds default channel (usually #general), mentioning the member
 	try {
-		member.guild.defaultChannel.send('Beep, Boop! Bye, ' + member.displayName + '!');
+        if(db.servers[member.guild.id].welcomeChannel !== undefined) {
+            let welcomeChannel = member.guild.channels.get(db.servers[member.guild.id].welcomeChannel);
+            if(welcomeChannel !== undefined) {
+                welcomeChannel.send('Beep, Boop! Bye, ' + member.displayName + '!');
+            }
+        }
 	} catch(e) {}
     
 });
