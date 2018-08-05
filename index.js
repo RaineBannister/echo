@@ -44,7 +44,7 @@ client.on('ready', ()=> {
 
     db.save();
 
-    client.user.setGame(config.game)
+    client.user.setActivity(config.game, {type: config.type});
 });
 
 client.on('message', message => {
@@ -232,6 +232,10 @@ client.on('guildMemberUpdate', (oldMember, newMember) => {
        member.roles.push(role.id);
     });
     member.name = newMember.nickname;
+});
+
+client.on('error', (error) => {
+    console.log(error);
 });
 
 client.login(token);

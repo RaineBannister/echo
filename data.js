@@ -155,7 +155,7 @@ class Server {
      * @returns {string}
      */
     get welcome() {
-        return this._message;
+        return this._welcome;
     }
 
     /**

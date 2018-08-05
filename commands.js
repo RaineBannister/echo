@@ -200,7 +200,7 @@ commands.push(
 
                 let ret = "Beep, Boop! Here are their warnings!\n```";
                 for(let i = 0; i < warns.length; i ++) {
-                    ret += "  ◘ " + warns[i] + "\n";
+                    ret += "  • " + warns[i] + "\n";
                 }
                 ret += "```";
                 message.channel.send(ret);
@@ -390,7 +390,7 @@ commands.push(
             let string = 'Here are the roles you can assign to yourself: \n';
             roles.forEach(role => {
                 let thisRole = message.guild.roles.find('id', role);
-                string += '    - ' + thisRole.name;
+                string += '    • ' + thisRole.name + "\n";
             });
 
             message.channel.send(string);
