@@ -1,4 +1,6 @@
 let fs = require('fs');
+let db = require('./database');
+
 
 class JSONDatabase {
     constructor() {
@@ -64,22 +66,6 @@ class JSONDatabase {
         this.save();
     }
 
-    //BEGIN COOL WRAPPER STUFFS.......................................................................................//
-    /**
-     * Deprecated
-     *
-     * @param {number} id
-     * @returns {Server}
-     */
-    server(id) {
-        let temp = this.getServer(id);
-        return new Server(temp.id, temp.message, temp.mutes, temp.welcomeChannel, temp.logChannel, this);
-    }
-
-    /**
-     *
-     * @returns {Object.<Server>}
-     */
     get servers() {
         let array = {};
         let db = this;
@@ -208,9 +194,6 @@ class Server {
     }
 }
 
-/**
- *
- */
 class Member {
     /**
      *
@@ -335,6 +318,49 @@ class Role {
 }
 
 class Channel {
+
+}
+
+class SqliteDatabase {
+    /**
+     * These shouldn't be used anymore...
+     */
+    constructor() {}
+    loadData() {};
+    save(){};
+
+    getServer(id) {
+        return new SqliteServer(id);
+    }
+
+    getMember(server, id) {
+        return new SqliteMember(server, id);
+    }
+
+    getMemberInServer(server, id) {
+        return this.getMember(server, id);
+    }
+}
+
+class SqliteServer {
+    constructor(id) {
+        this._server = db.Server.findById(id);
+    }
+}
+
+class SqliteMember {
+    constructor(server_id, id) {
+        this._member = db.ServerMember.findOne({
+            where: {server_id: server_id, member_id: id}
+        })
+    }
+}
+
+class SqliteRole {
+
+}
+
+class SqliteChannel {
 
 }
 

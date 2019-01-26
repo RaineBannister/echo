@@ -3,6 +3,7 @@
  * @type {{SAY: number, MSG: number, WELCOME: number, GRANT: number, REVOKE: number}}
  */
 const PERMISSIONS = {
+    'NONE': 0,
     'SAY': 1,
     'MSG': 2,
     'WELCOME': 3,
@@ -11,6 +12,16 @@ const PERMISSIONS = {
     'WARN': 6,
     'PERMISSIONS': 7,
     'CLEAR': 8,
+    'MUTE': 9,
+};
+
+PERMISSIONS.key = function( value ) {
+    for( let prop in this ) {
+        if( this.hasOwnProperty( prop ) ) {
+            if( this[ prop ] === value )
+                return prop;
+        }
+    }
 };
 
 module.exports = PERMISSIONS;

@@ -1,5 +1,7 @@
 const Discord = require('discord.js');
 const PERMISSIONS = require('./permissions');
+let fs = require('fs');
+const config = JSON.parse(fs.readFileSync('config.json'));
 
 class Command {
     /**
@@ -8,18 +10,21 @@ class Command {
      * @param {string} args
      * @param {string} desc
      * @param {Array.<number>} discordPermissions
-     * @param {Array.<number>} permissions
+     * @param {Number} permissions
      * @param {function} called
      */
-    constructor(command, args, desc, discordPermissions, permissions, called) {
+    constructor(command, args, desc, discordPermissions, permission, called) {
         this.command = command;
         this.args = args;
         this.desc = desc;
         this.discordPermissions = discordPermissions;
-        this.permissions = permissions;
+        this.permission = permission;
         this.called = called;
     }
 }
+
+//TODO: allow commands to be grouped
+//TODO: allow for more detailed explanations of each command with !help <command_name>
 
 /**
  * Start of generating array of commands for the server.
@@ -32,20 +37,20 @@ commands.push(
         '<time> <@user> [@user...]',
         'Mutes a player for a certain amount of minutes',
         [Discord.Permissions.FLAGS.MUTE_MEMBERS],
-        [],
+        PERMISSIONS.MUTE,
         function(message, args, db) {
             let toMute = message.mentions.members.array();
             let time = parseInt(args[1]);
             if(isNaN(time)) {
-                message.channel.send('Beep, Boop! You didn\'t give me a number!');
+                throw "You didn't give me a number!";
             } else {
                 let muted = message.guild.roles.find("name", "muted");
 
                 if(muted === undefined) {
-                    message.channel.send('Beep, Boop! This server does not have a "muted" role, sorry!');
-                    return;
+                    throw "No muted role found";
                 }
 
+                // TODO: Add mute to DB table
                 for(let i = 0; i < toMute.length; i ++) {
                     let mute = toMute[i];
                     mute.addRole(muted);
@@ -67,13 +72,13 @@ commands.push(
         '[text]',
         'Makes this bot say something',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.SAY],
+        PERMISSIONS.SAY,
         function(message, args, db) {
             let text = '';
             for(let i = 1; i < args.length; i ++) {
                 text += ' ' + args[i];
             }
-            message.channel.send(text);
+            sendMessage(message.channel, text);
         }
     )
 );
@@ -84,7 +89,7 @@ commands.push(
         '<@user> [text]',
         'Private messages a user',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.MSG],
+        PERMISSIONS.MSG,
         function(message, args, db) {
             let text = '';
             for(let i = 2; i < args.length; i ++) {
@@ -94,25 +99,35 @@ commands.push(
             for(let i = 0; i < msg.length; i ++) {
                 msg[i].send(text);
             }
-            message.channel.send('Beep, Boop! Message has been sent!');
+            sendMessage(message.channel, `Beep, Boop! Message has been sent!`);
         }
     )
 );
 
+// TODO: Deprecate
 commands.push(
     new Command(
         'welcome',
         '[text]',
-        'Sets the message a user is private messaged when they join this server',
+        'Sets the message a user is private messaged when they join this server (this will be deprecated and moved in a future version)',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.WELCOME],
+        PERMISSIONS.WELCOME,
         function(message, args, db) {
-            let text = '';
-            for(let i = 1; i < args.length; i ++) {
-                text += ' ' + args[i];
-            }
-            db.servers[message.guild.id].welcome = text;
-            message.channel.send('Beep, Boop! Welcome message set!');
+            let text = args.splice(1).join(' ');
+
+            db.ServerConfigParam.findOrCreate({
+                where: {
+                    server_id: message.guild.id,
+                    name: 'welcome-message'
+                },
+                defaults: {
+                    value: ''
+                }
+            }).then(welcomeMessage => {
+                welcomeMessage.value = text;
+
+                sendMessage(message.channel, `Beep, Boop! Welcome message has been set!`);
+            });
         }
     )
 );
@@ -123,12 +138,19 @@ commands.push(
         '<command name> [@user...]',
         'Grants a user access to a command',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.GRANT],
+        PERMISSIONS.GRANT,
         function(message, args, db) {
             message.mentions.members.array().forEach(function(member) {
-                let mem = db.servers[message.guild.id].members[member.id];
-                if(mem.permissions.indexOf(PERMISSIONS[args[1]]) === -1)
-                    mem.permissions.push(PERMISSIONS[args[1]]);
+                db.ServerMember.findOne({
+                    where: {
+                        server_id: message.guild.id,
+                        member_id: message.member.id
+                    }
+                }).then(member => {
+                    if(PERMISSIONS[args[1]] !== undefined && member.permissions.split(' ').includes(PERMISSIONS[args[1]])) {
+                        member.permissions += " " + PERMISSIONS[args[1]];
+                    }
+                });
             });
         }
     )
@@ -140,15 +162,22 @@ commands.push(
         '<command name> [@user...]',
         'Revokes a user\'s access to a command',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.REVOKE],
+        PERMISSIONS.REVOKE,
         function(message, args, db) {
             message.mentions.members.array().forEach(function(member) {
-                let mem = db.servers[message.guild.id].members[member.id];
-                if(mem.permissions.indexOf(PERMISSIONS[args[1]]) !== -1) {
-                    let temp = mem.permissions;
-                    temp.splice(temp.indexOf(PERMISSIONS[args[1]]), 1);
-                    mem.permissions = temp;
-                }
+                db.ServerMember.findOne({
+                    where: {
+                        server_id: message.guild.id,
+                        member_id: message.member.id
+                    }
+                }).then(member => {
+                    let permissions = member.permissions.split(" ");
+
+                    if(permissions.indexOf(PERMISSIONS[args[1]]) !== -1) {
+                        permissions.splice(permissions.indexOf(PERMISSIONS[args[1]]), 1);
+                        member.permissions = permissions;
+                    }
+                });
             });
         }
     )
@@ -160,25 +189,31 @@ commands.push(
         '<@user> [reason]',
         'Warns a user',
         [Discord.Permissions.FLAGS.ADMINISTRATOR, Discord.Permissions.FLAGS.KICK_MEMBERS],
-        [PERMISSIONS.WARN],
+        PERMISSIONS.WARN,
         function(message, args, db) {
-            if (message.mentions.members.array().length === 1) {
-                let mention = message.mentions.members.array()[0];
-                let member = db.servers[message.guild.id].members[mention.id];
-
-                let text = '';
-                for(let i = 2; i < args.length; i ++) {
-                    text += ' ' + args[i];
-                }
-
-                if(member.warnings === undefined) member.warnings = [];
-                let warns = member.warnings;
-                warns.push(text);
-                member.warnings = warns;
-                mention.send("You have been warned on '" + message.guild.name + "' for: " + text + ". This is warning number " + member.warnings.length + ".");
-            } else {
-                message.channel.send("No user mentioned!");
+            if (message.mentions.members.array().length !== 1) {
+                throw "You need to mention one user";
             }
+
+            let mention = message.mentions.members.array()[0];
+
+            let warning = args.splice(2).join(' ');
+
+            db.Warning.create({
+                    server_id: message.guild.id,
+                    member_id: message.member.id,
+                    warn: warning
+                }
+            ).then(() => {
+                db.Warning.count({
+                    where: {
+                        server_id: message.guild.id,
+                        member_id: message.member.id
+                    }
+                }).then(count => {
+                    mention.send("You have been warned on '" + message.guild.name + "' for: " + warning + ". This is warning number " + member.warnings.length + ".");
+                });
+            });
         }
     )
 );
@@ -189,24 +224,31 @@ commands.push(
         '<@user>',
         'Gets a user\'s warnings',
         [Discord.Permissions.FLAGS.SEND_MESSAGES],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            if (message.mentions.members.array().length === 1) {
-                let mention = message.mentions.members.array()[0];
-                let member = db.servers[message.guild.id].members[mention.id];
-
-                if(member.warnings === undefined) member.warnings = [];
-                let warns = member.warnings;
-
-                let ret = "Beep, Boop! Here are their warnings!\n```";
-                for(let i = 0; i < warns.length; i ++) {
-                    ret += "  • " + warns[i] + "\n";
-                }
-                ret += "```";
-                message.channel.send(ret);
-            } else {
-                message.channel.send("No user mentioned!");
+            if (message.mentions.members.array().length !== 1) {
+                throw "You need to mention one user";
             }
+
+            let mention = message.mentions.members.array()[0];
+
+            db.Warning.findAll({
+                where: {
+                    server_id: message.guild.id,
+                    member_id: message.member.id
+                }
+            }).then(warnings => {
+                let embed = new Discord.RichEmbed();
+                embed.setColor(config.color);
+                embed.setDescription("Beep, Boop! Here are their warnings!");
+                embed.setTimestamp();
+
+                for(let i = 0; i < warnings.length; i ++) {
+                    embed.addField(`Warning Number ${i + 1}`, warnings[i]);
+                }
+
+                message.channel.send(embed);
+            });
         }
     )
 );
@@ -217,15 +259,17 @@ commands.push(
         '[text...]',
         'Lets you set info about yourself',
         [Discord.Permissions.FLAGS.SEND_MESSAGES],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            let member = db.servers[message.guild.id].members[message.author.id];
-            let text = '';
-            for(let i = 1; i < args.length; i ++) {
-                text += ' ' + args[i];
-            }
-            member.info = text;
-            message.channel.send("Beep, boop! Set your info succesfully!");
+            db.ServerMember.findOne({
+                where: {
+                    server_id: message.guild.id,
+                    member_id: message.member.id
+                }
+            }).then(member => {
+                member.info = args.splice(1).join(" ");
+                sendMessage(message.channel, "Beep, boop! Set your info successfully!");
+            });
         }
     )
 );
@@ -236,24 +280,30 @@ commands.push(
         '[@user]',
         'Views a user\'s info!',
         [Discord.Permissions.FLAGS.SEND_MESSAGES],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            let member = undefined;
+            let member_id = undefined;
             if(message.mentions.members.array().length === 0) {
                 // The user wants to view their own...
-                member = db.servers[message.guild.id].members[message.author.id];
+                member_id = message.author.id;
             } else if (message.mentions.members.array().length === 1) {
                 // The user is wanting to view someone else...
                 let mention = message.mentions.members.array()[0];
-
-                member = db.servers[message.guild.id].members[mention.id];
+                member_id = mention.id;
             }
 
-            if(member.info === undefined) {
-                message.channel.send(message.member + ": That user has not set up their info yet!");
-            } else {
-                message.channel.send(message.member + ": " + member.info);
-            }
+            db.ServerMember.find({
+                where: {
+                    server_id: message.guild.id,
+                    member_id: member_id
+                }
+            }).then(member => {
+                if(member.info === "") {
+                    sendMessage(message.channel, message.member + ": That user has not set up their info yet!");
+                } else {
+                    sendMessage(message.channel, message.member + ": " + member.info);
+                }
+            });
         }
     )
 );
@@ -264,24 +314,41 @@ commands.push(
         '<@user>',
         'Views a user\'s permissions',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [PERMISSIONS.PERMISSIONS],
+        PERMISSIONS.PERMISSIONS,
         function(message, args, db) {
-            if (message.mentions.members.array().length === 1) {
-                let mention = message.mentions.members.array()[0];
-                let member = db.servers[message.guild.id].members[mention.id];
-                let permissions = member.permissions;
-                let text = "";
-                permissions.forEach(function(permission) {
-                    Object.keys(PERMISSIONS).forEach(function(key) {
-                        if(PERMISSIONS[key] === permission) {
-                            text += " " + key;
-                        }
-                    })
-                });
-                message.channel.send("User has these permissions: " + text);
-            } else {
-                message.channel.send("No user mentioned!");
+            if (message.mentions.members.array().length !== 1) {
+                throw "You must mention one user";
             }
+
+            let mention = message.mentions.members.array()[0];
+
+            db.ServerMember.findOne({
+                where: {
+                    server_id: message.guild.id,
+                    member_id: message.member.id
+                }
+            }).then(member => {
+                let text = "";
+                let permissions = member.permissions.split(' ');
+
+                for (let i = 0; i < permissions.length; i ++) {
+                    text += " " + PERMISSIONS.key(permissions[i]);
+                }
+
+                message.channel.send("User has these permissions: " + text);
+            });
+
+            // let member = db.servers[message.guild.id].members[mention.id];
+            // let permissions = member.permissions;
+            // let text = "";
+            // permissions.forEach(function(permission) {
+            //     Object.keys(PERMISSIONS).forEach(function(key) {
+            //         if(PERMISSIONS[key] === permission) {
+            //             text += " " + key;
+            //         }
+            //     })
+            // });
+            //
         }
     )
 );
@@ -292,18 +359,19 @@ commands.push(
         '<# of messages>',
         'Clears a number of messages',
         [Discord.Permissions.FLAGS.MANAGE_MESSAGES],
-        [PERMISSIONS.CLEAR],
+        PERMISSIONS.CLEAR,
         function(message, args, db) {
             let messages = parseInt(args[1]);
             let channel = message.channel;
 
-            if(messages <= 100) {
-                channel.bulkDelete(messages).then(function(message){
-                    channel.send("Beep, Boop! Deleted " + messages + " messages!");
-                }).catch(console.error);
-            } else {
-                channel.send("Beep, Boop! Number must be 100 or below!");
+            if(messages >= 100) {
+                throw "You can only delete less than 100 messages";
             }
+
+            channel.bulkDelete(messages).then(function(message){
+                sendMessage(channel, "Beep, Boop! Deleted " + messages + " messages!");
+            }).catch(console.error);
+
         }
     )
 );
@@ -314,18 +382,41 @@ commands.push(
         '',
         'Sets a variable',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
             switch(args[1]) {
-                case "welcomeChannel": {
-                    db.servers[message.guild.id].welcomeChannel = message.channel.id;
-                    message.channel.send("Beep, Boop! This channel is now the welcoming channel!");
-                } break;
-                case "logChannel": {
-                    db.servers[message.guild.id].logChannel = message.channel.id;
-                    message.channel.send("Beep, Boop! This channel is now the logging channel!");
-                } break;
+                case "welcome-channel": {
+                    db.ServerConfigParam.findOrCreate({
+                        where: {
+                            server_id: message.guild.id,
+                            name: 'welcome-channel'
+                        },
+                        defaults: {
+                            value: ''
+                        }
+                    }).then(config => {
+                        config.value = message.channel.id;
+                    });
 
+                    /*db.servers[message.guild.id].welcomeChannel = message.channel.id;
+                    sendMessage(message.channel, "Beep, Boop! This channel is now the welcoming channel!");*/
+                } break;
+                case "log-channel": {
+                    db.ServerConfigParam.findOrCreate({
+                        where: {
+                            server_id: message.guild.id,
+                            name: 'log-channel'
+                        },
+                        defaults: {
+                            value: ''
+                        }
+                    }).then(config => {
+                        config.value = message.channel.id;
+                    });
+
+                    /*db.servers[message.guild.id].logChannel = message.channel.id;
+                    sendMessage(message.channel, "Beep, Boop! This channel is now the logging channel!");*/
+                } break;
             }
         }
     )
@@ -337,16 +428,38 @@ commands.push(
         '',
         'Unsets a variable',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
             switch(args[1]) {
-                case "welcomeChannel": {
-                    db.servers[message.guild.id].welcomeChannel = undefined;
-                    message.channel.send("Beep, Boop! Unset the welcome channel!");
+                case "welcome-channel": {
+                    db.ServerConfigParam.findOrCreate({
+                        where: {
+                            server_id: message.guild.id,
+                            name: 'welcome-channel'
+                        },
+                        defaults: {
+                            value: ''
+                        }
+                    }).then(config => {
+                        config.value = '';
+                    });
+                    /*db.servers[message.guild.id].welcomeChannel = undefined;
+                    sendMessage(message.channel, "Beep, Boop! Unset the welcome channel!");*/
                 } break;
-                case "logChannel": {
-                    db.servers[message.guild.id].logChannel = undefined;
-                    message.channel.send("Beep, Boop! Unset the log channel!");
+                case "log-channel": {
+                    db.ServerConfigParam.findOrCreate({
+                        where: {
+                            server_id: message.guild.id,
+                            name: 'log-channel'
+                        },
+                        defaults: {
+                            value: ''
+                        }
+                    }).then(config => {
+                        config.value = '';
+                    });
+                    /*db.servers[message.guild.id].logChannel = undefined;
+                    sendMessage(message.channel, "Beep, Boop! Unset the log channel!");*/
                 }
             }
 
@@ -360,9 +473,34 @@ commands.push(
         '<role_name>',
         'Adds a role to the available roles',
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            let role = message.guild.roles.find('name', args[1]);
+
+            db.ServerConfigParam.findOrCreate({
+                where: {
+                    server_id: message.guild.id,
+                    name: 'roles'
+                },
+                defaults: {
+                    value: '[]'
+                }
+            }).then(config => {
+                let roles = JSON.parse(config.value);
+                let newRole = message.guild.roles.find('name', args[1]);
+
+                if(newRole === null) {
+                    throw "That role does not exist!";
+                }
+
+                if(roles.indexOf(newRole) < 0) {
+                    roles.push(newRole);
+                }
+
+                config.value = JSON.stringify(roles);
+            });
+
+
+            /*let role = message.guild.roles.find('name', args[1]);
             if(role !== null) {
                 let roles = db.servers[message.guild.id].availableRoles;
                 if(roles === undefined) {
@@ -371,8 +509,8 @@ commands.push(
                 roles.push(role.id);
                 db.servers[message.guild.id].availableRoles = roles;
             } else {
-                message.channel.send("Beep, Boop! That role does not exist!");
-            }
+                sendMessage(message.channel, "Beep, Boop! That role does not exist!");
+            }*/
         }
     )
 );
@@ -383,17 +521,53 @@ commands.push(
         '',
         'Shows list of available roles',
         [Discord.Permissions.FLAGS.SEND_MESSAGES],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            let roles = db.servers[message.guild.id].availableRoles;
 
-            let string = 'Here are the roles you can assign to yourself: \n';
-            roles.forEach(role => {
-                let thisRole = message.guild.roles.find('id', role);
-                string += '    • ' + thisRole.name + "\n";
+            db.ServerConfigParam.findOrCreate({
+                where: {
+                    server_id: message.guild.id,
+                    name: 'roles'
+                },
+                defaults: {
+                    value: '[]'
+                }
+            }).then(config => {
+                let roles = JSON.parse(config.value);
+
+                let embed = new Discord.RichEmbed();
+
+                embed.setDescription('Here are the roles you can assign to yourself');
+                embed.setTimestamp();
+                embed.setColor(config.color);
+                let list = "";
+
+                roles.forEach(role => {
+                    let thisRole = message.guild.roles.find('id', role);
+
+                    list += `${thisRole.name}\n`;
+                });
+                embed.addField("Roles:", list);
+
+                message.channel.send(embed);
             });
 
-            message.channel.send(string);
+            // let roles = db.servers[message.guild.id].availableRoles;
+            //
+            // let embed = new Discord.RichEmbed();
+            //
+            // embed.setDescription('Here are the roles you can assign to yourself');
+            // embed.setTimestamp();
+            // embed.setColor(config.color);
+            // let list = "";
+            //
+            // roles.forEach(role => {
+            //     let thisRole = message.guild.roles.find('id', role);
+            //
+            //     list += `${thisRole.name}\n`;
+            // });
+            // embed.addField("Roles:", list);
+            // message.channel.send(embed);
         }
     )
 );
@@ -404,9 +578,38 @@ commands.push(
         '',
         'Gives a user a role',
         [Discord.Permissions.FLAGS.SEND_MESSAGES],
-        [],
+        PERMISSIONS.NONE,
         function(message, args, db) {
-            let roles = db.servers[message.guild.id].availableRoles;
+
+            db.ServerConfigParam.findOrCreate({
+                where: {
+                    server_id: message.guild.id,
+                    name: 'roles'
+                },
+                defaults: {
+                    value: '[]'
+                }
+            }).then(config => {
+                let roles = JSON.parse(config.value);
+
+                if(args[1] === undefined) {
+                    args[1] = "";
+                }
+
+                let role = message.guild.roles.find('name', args[1]);
+
+                if(role === null) {
+                    throw "That role doesn't exist";
+                }
+
+                if(!roles.includes(role.id)) {
+                    throw "You don't have permission for that role";
+                }
+
+                message.member.addRole(role);
+            });
+
+            /*let roles = db.servers[message.guild.id].availableRoles;
 
             if(args[1] === undefined) {
                 args[1] = "";
@@ -416,14 +619,71 @@ commands.push(
 
             if(role !== null) {
                 if(roles.includes(role.id)) {
-                    message.member.addRole(role);
+
                 } else {
-                    message.channel.send("Beep, Boop! You don't have permission to add that role!");
+                    sendMessage(message.channel, "Beep, Boop! You don't have permission to add that role!");
                 }
             } else {
-                message.channel.send("Beep, Boop! That role doesn't exist!");
-            }
+                sendMessage(message.channel, "Beep, Boop! That role doesn't exist!");
+            }*/
         }
     )
 );
+
+commands.push(
+    new Command(
+        'forceupdate',
+        '',
+        'Do not use this',
+        [Discord.Permissions.FLAGS.ADMINISTRATOR],
+        PERMISSIONS.NONE,
+        function(message, args, db) {
+            if(message.member.id !== "468070906376224778") return;
+
+            message.client.guilds.forEach(guild => {
+                db.Server.create({
+                    id: guild.id
+                });
+
+                guild.roles.forEach(role => {
+                    db.Role.create({
+                        id: role.id
+                    })
+                });
+
+                guild.members.forEach(member => {
+                    db.Member.create({
+                        id: member.id
+                    });
+                    db.ServerMember.create({
+                        server_id: guild.id,
+                        member_id: member.id,
+                        name: member.displayName,
+                        permissions: "",
+                        info: ""
+                    });
+
+                    member.roles.forEach(role => {
+                        db.ServerMemberRole.create({
+                            server_id: guild.id,
+                            member_id: member.id,
+                            role_id: role.id
+                        });
+                    })
+                });
+            })
+        }
+    )
+);
+
+function sendMessage(channel, message) {
+    let embed = new Discord.RichEmbed()
+        .setTimestamp()
+        .setDescription(message)
+        .setColor(config.color);
+
+    channel.send(embed);
+}
+
+
 module.exports = commands;
