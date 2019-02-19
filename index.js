@@ -158,7 +158,7 @@ client.on('guildMemberAdd', member => {
 
     db.ServerConfigParam.findOrCreate({
         where: {
-            server_id: message.guild.id,
+            server_id: member.guild.id,
             name: 'welcome-channel'
         },
         defaults: {
@@ -294,36 +294,44 @@ client.on('message', message => {
         let args = message.content.substr(1).split(' ');
         let com = args[0].replace('!','');
 
-        Commands.forEach(command => {
-            if(command.command === com) { // we have the command, now to check permissions...
-                let hasPermission = false;
+        Commands.forEach(commandsGroup => {
+            commandsGroup.commands.forEach(command => {
+                if(command.command === com) { // we have the command, now to check permissions...
+                    let hasPermission = false;
 
-                for(let j = 0; j < command.discordPermissions.length; j ++) {
-                    if(message.member.hasPermission(command.discordPermissions[j])) {
-                        hasPermission = true;
+                    for(let j = 0; j < command.discordPermissions.length; j ++) {
+                        if(message.member.hasPermission(command.discordPermissions[j])) {
+                            hasPermission = true;
+                        }
                     }
+
+                    db.ServerMember.findOne({
+                        where: {
+                            server_id: message.guild.id,
+                            member_id: message.member.id
+                        }
+                    }).then((member) => {
+                        if(member.permissions.split(' ').includes(command.permission)) {
+                            hasPermission = true;
+                        }
+
+                        if(hasPermission) {
+                            try {
+                                command.called(message, args, db);
+                            } catch(error) {
+                                sendMessage(message.channel, error, `(Tried: !${args.join(' ')})`);
+                            }
+
+                        } else {
+                            sendMessage(message.channel, "Sorry, " + message.member + " you do not have permission to run that command!", "(Tried: !" + args.join(' ') + ")");
+                        }
+
+                        message.delete(500);
+                    });
                 }
-
-                db.ServerMember.findOne({
-                    where: {
-                        server_id: message.guild.id,
-                        member_id: message.member.id
-                    }
-                }).then((member) => {
-                    if(member.permissions.split(' ').includes(command.permission)) {
-                        hasPermission = true;
-                    }
-
-                    if(hasPermission) {
-                        command.called(message, args, db);
-                    } else {
-                        sendMessage(message.channel, "Sorry, " + message.member + " you do not have permission to run that command!", "(Tried: !" + args.join(' ') + ")");
-                    }
-
-                    message.delete(500);
-                });
-            }
+            });
         });
+
         if(com === 'help') {
             let embed = new Discord.RichEmbed()
                 .setColor(config.color)
@@ -332,36 +340,51 @@ client.on('message', message => {
                 .addField("!help", "Shows this help box")
                 .setFooter("Echo 2.0.0");
 
-            let list = [];
-            Commands.forEach(command => {
-                let hasPermission = false;
+            if(args.length === 1) {
+                let list = [];
+                Commands.forEach(commandsGroup => {
+                    let commands = "";
+                    commandsGroup.commands.forEach(command => {
+                        let hasPermission = false;
 
-                for(let j = 0; j < command.discordPermissions.length; j ++) {
-                    if(message.member.hasPermission(command.discordPermissions[j])) {
-                        hasPermission = true;
-                    }
-                }
+                        for(let j = 0; j < command.discordPermissions.length; j ++) {
+                            if(message.member.hasPermission(command.discordPermissions[j])) {
+                                hasPermission = true;
+                            }
+                        }
 
-                list.push(db.ServerMember.findOne({
-                    where: {
-                        server_id: message.guild.id,
-                        member_id: message.member.id
-                    }
-                }).then((member) => {
-                    if(member.permissions.split(' ').includes(command.permission)) {
-                        hasPermission = true;
-                    }
+                        list.push(db.ServerMember.findOne({
+                            where: {
+                                server_id: message.guild.id,
+                                member_id: message.member.id
+                            }
+                        }).then((member) => {
+                            if(member.permissions.split(' ').includes(command.permission)) {
+                                hasPermission = true;
+                            }
 
-                    if(hasPermission) {
-                        embed.addField(`!${command.command} ${command.args}`, `${command.desc}`);
-                    }
-                }));
-            });
+                            if(hasPermission) {
+                                commands += `**!${command.command}** ${command.args} \n`;
+                            }
+                        }));
+                    });
+                    Promise.all(list).then(() => {
+                        if(commands !== "") {
+                            embed.addField(commandsGroup.name, commands);
+                        }
+                        list = [];
+                    });
 
-            Promise.all(list).then(() => {
-                message.delete(500);
-                message.channel.send(embed);
-            })
+                });
+
+                Promise.all(list).then(() => {
+                    message.delete(500);
+                    message.channel.send(embed);
+                });
+            } else if (args.length === 2) {
+                // We are looking for help for a specific command
+                // TODO: Add Functionality
+            }
         }
     }
 

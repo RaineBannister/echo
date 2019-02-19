@@ -102,6 +102,12 @@ const Warning = sequelize.define('warning', {
     }
 });
 
+const FilteredWord = sequelize.define('filtered_word', {
+    word: {
+        type: Sequelize.STRING
+    }
+});
+
 Server.sync();
 Member.sync();
 Role.sync();
@@ -111,6 +117,7 @@ ServerMember.sync();
 Message.sync();
 ServerMemberRole.sync();
 Warning.sync();
+FilteredWord.sync();
 
 module.exports = {
     Server,
@@ -121,5 +128,6 @@ module.exports = {
     ServerMember,
     Message,
     ServerMemberRole,
-    Warning
+    Warning,
+    FilteredWord
 };

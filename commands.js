@@ -1,7 +1,7 @@
 const Discord = require('discord.js');
 const PERMISSIONS = require('./permissions');
 let fs = require('fs');
-const config = JSON.parse(fs.readFileSync('config.json'));
+const global_config = JSON.parse(fs.readFileSync('config.json'));
 
 class Command {
     /**
@@ -31,7 +31,33 @@ class Command {
  * @type {Array.<Command>}
  */
 let commands = [];
-commands.push(
+
+let general  = {
+    name: "General",
+    commands: []
+};
+
+let administrative = {
+    name: "Administrative",
+    commands: []
+};
+
+let settings = {
+    name: "Settings",
+    commands: []
+};
+
+let permissions = {
+    name: "Permissions",
+    commands: []
+};
+
+let roles = {
+    name: "Roles",
+    commands: []
+};
+
+administrative.commands.push(
     new Command(
         'mute',
         '<time> <@user> [@user...]',
@@ -66,7 +92,7 @@ commands.push(
     )
 );
 
-commands.push(
+administrative.commands.push(
     new Command(
         'say',
         '[text]',
@@ -83,7 +109,7 @@ commands.push(
     )
 );
 
-commands.push(
+administrative.commands.push(
     new Command(
         'msg',
         '<@user> [text]',
@@ -104,35 +130,7 @@ commands.push(
     )
 );
 
-// TODO: Deprecate
-commands.push(
-    new Command(
-        'welcome',
-        '[text]',
-        'Sets the message a user is private messaged when they join this server (this will be deprecated and moved in a future version)',
-        [Discord.Permissions.FLAGS.ADMINISTRATOR],
-        PERMISSIONS.WELCOME,
-        function(message, args, db) {
-            let text = args.splice(1).join(' ');
-
-            db.ServerConfigParam.findOrCreate({
-                where: {
-                    server_id: message.guild.id,
-                    name: 'welcome-message'
-                },
-                defaults: {
-                    value: ''
-                }
-            }).then(welcomeMessage => {
-                welcomeMessage.value = text;
-
-                sendMessage(message.channel, `Beep, Boop! Welcome message has been set!`);
-            });
-        }
-    )
-);
-
-commands.push(
+permissions.commands.push(
     new Command(
         'grant',
         '<command name> [@user...]',
@@ -149,6 +147,8 @@ commands.push(
                 }).then(member => {
                     if(PERMISSIONS[args[1]] !== undefined && member.permissions.split(' ').includes(PERMISSIONS[args[1]])) {
                         member.permissions += " " + PERMISSIONS[args[1]];
+                        member.save();
+                        // TODO: Add feedback to show that the action is done
                     }
                 });
             });
@@ -156,7 +156,7 @@ commands.push(
     )
 );
 
-commands.push(
+permissions.commands.push(
     new Command(
         'revoke',
         '<command name> [@user...]',
@@ -176,6 +176,8 @@ commands.push(
                     if(permissions.indexOf(PERMISSIONS[args[1]]) !== -1) {
                         permissions.splice(permissions.indexOf(PERMISSIONS[args[1]]), 1);
                         member.permissions = permissions;
+                        member.save();
+                        // TODO: Add feedback to show that the action is completed
                     }
                 });
             });
@@ -183,7 +185,7 @@ commands.push(
     )
 );
 
-commands.push(
+administrative.commands.push(
     new Command(
         'warn',
         '<@user> [reason]',
@@ -211,14 +213,14 @@ commands.push(
                         member_id: message.member.id
                     }
                 }).then(count => {
-                    mention.send("You have been warned on '" + message.guild.name + "' for: " + warning + ". This is warning number " + member.warnings.length + ".");
+                    mention.send("You have been warned on '" + message.guild.name + "' for: " + warning + ". This is warning number " + count + ".");
                 });
             });
         }
     )
 );
 
-commands.push(
+general.commands.push(
     new Command(
         'warnings',
         '<@user>',
@@ -239,12 +241,12 @@ commands.push(
                 }
             }).then(warnings => {
                 let embed = new Discord.RichEmbed();
-                embed.setColor(config.color);
+                embed.setColor(global_config.color);
                 embed.setDescription("Beep, Boop! Here are their warnings!");
                 embed.setTimestamp();
 
                 for(let i = 0; i < warnings.length; i ++) {
-                    embed.addField(`Warning Number ${i + 1}`, warnings[i]);
+                    embed.addField(`Warning Number ${i + 1}`, warnings[i].warn);
                 }
 
                 message.channel.send(embed);
@@ -253,7 +255,7 @@ commands.push(
     )
 );
 
-commands.push(
+general.commands.push(
     new Command(
         'setinfo',
         '[text...]',
@@ -268,13 +270,15 @@ commands.push(
                 }
             }).then(member => {
                 member.info = args.splice(1).join(" ");
-                sendMessage(message.channel, "Beep, boop! Set your info successfully!");
+                member.save().then(() => {
+                    sendMessage(message.channel, "Beep, boop! Set your info successfully!");
+                });
             });
         }
     )
 );
 
-commands.push(
+general.commands.push(
     new Command(
         'info',
         '[@user]',
@@ -292,7 +296,7 @@ commands.push(
                 member_id = mention.id;
             }
 
-            db.ServerMember.find({
+            db.ServerMember.findOne({
                 where: {
                     server_id: message.guild.id,
                     member_id: member_id
@@ -308,7 +312,7 @@ commands.push(
     )
 );
 
-commands.push(
+permissions.commands.push(
     new Command(
         'permissions',
         '<@user>',
@@ -353,7 +357,7 @@ commands.push(
     )
 );
 
-commands.push(
+administrative.commands.push(
     new Command(
         'clear',
         '<# of messages>',
@@ -368,6 +372,7 @@ commands.push(
                 throw "You can only delete less than 100 messages";
             }
 
+            // TODO: Investigate error from this action
             channel.bulkDelete(messages).then(function(message){
                 sendMessage(channel, "Beep, Boop! Deleted " + messages + " messages!");
             }).catch(console.error);
@@ -376,7 +381,7 @@ commands.push(
     )
 );
 
-commands.push(
+settings.commands.push(
     new Command(
         'set',
         '',
@@ -395,7 +400,9 @@ commands.push(
                             value: ''
                         }
                     }).then(config => {
-                        config.value = message.channel.id;
+                        config[0].value = message.channel.id;
+                        config[0].save();
+                        // TODO: Add response to show the action completed
                     });
 
                     /*db.servers[message.guild.id].welcomeChannel = message.channel.id;
@@ -411,7 +418,9 @@ commands.push(
                             value: ''
                         }
                     }).then(config => {
-                        config.value = message.channel.id;
+                        config[0].value = message.channel.id;
+                        config[0].save();
+                        // TODO: Add response to show the action completed
                     });
 
                     /*db.servers[message.guild.id].logChannel = message.channel.id;
@@ -422,7 +431,7 @@ commands.push(
     )
 );
 
-commands.push(
+settings.commands.push(
     new Command(
         'unset',
         '',
@@ -441,7 +450,9 @@ commands.push(
                             value: ''
                         }
                     }).then(config => {
-                        config.value = '';
+                        config[0].value = '';
+                        config[0].save();
+                        // TODO: Add response to show the action completed
                     });
                     /*db.servers[message.guild.id].welcomeChannel = undefined;
                     sendMessage(message.channel, "Beep, Boop! Unset the welcome channel!");*/
@@ -456,7 +467,9 @@ commands.push(
                             value: ''
                         }
                     }).then(config => {
-                        config.value = '';
+                        config[0].value = '';
+                        config[0].save();
+                        // TODO: Add response to show the action completed
                     });
                     /*db.servers[message.guild.id].logChannel = undefined;
                     sendMessage(message.channel, "Beep, Boop! Unset the log channel!");*/
@@ -467,7 +480,7 @@ commands.push(
     )
 );
 
-commands.push(
+roles.commands.push(
     new Command(
         'addRole',
         '<role_name>',
@@ -485,7 +498,7 @@ commands.push(
                     value: '[]'
                 }
             }).then(config => {
-                let roles = JSON.parse(config.value);
+                let roles = JSON.parse(config[0].value);
                 let newRole = message.guild.roles.find('name', args[1]);
 
                 if(newRole === null) {
@@ -496,7 +509,9 @@ commands.push(
                     roles.push(newRole);
                 }
 
-                config.value = JSON.stringify(roles);
+                config[0].value = JSON.stringify(roles);
+                config[0].save();
+                // TODO: Add response to show the action completed
             });
 
 
@@ -515,7 +530,33 @@ commands.push(
     )
 );
 
-commands.push(
+roles.commands.push(
+    new Command(
+        'removeRole',
+        '<role_name>',
+        '',
+        [Discord.Permissions.FLAGS.ADMINISTRATOR],
+        PERMISSIONS.NONE,
+        function(message, args, db) {
+            // TODO: Add functionality
+        }
+    )
+);
+
+roles.commands.push(
+    new Command(
+        'addRoleToGroup',
+        '<group_name> <role_name>',
+        '',
+        [Discord.Permissions.FLAGS.ADMINISTRATOR],
+        PERMISSIONS.NONE,
+        function(message, args, db) {
+            // TODO: Add functionality
+        }
+    )
+);
+
+roles.commands.push(
     new Command(
         'roles',
         '',
@@ -533,22 +574,30 @@ commands.push(
                     value: '[]'
                 }
             }).then(config => {
-                let roles = JSON.parse(config.value);
+                let roles = JSON.parse(config[0].value);
 
                 let embed = new Discord.RichEmbed();
 
                 embed.setDescription('Here are the roles you can assign to yourself');
                 embed.setTimestamp();
-                embed.setColor(config.color);
+                embed.setColor(global_config.color);
                 let list = "";
 
                 roles.forEach(role => {
-                    let thisRole = message.guild.roles.find('id', role);
-
-                    list += `${thisRole.name}\n`;
+                    if(typeof role === typeof {}) {
+                        let theseRoles = "";
+                        role.roles.forEach(nested => {
+                            let thisRole = message.guild.roles.find('id', nested);
+                            theseRoles += `${thisRole.name}\n`;
+                        });
+                        embed.addField(role.name, theseRoles);
+                    } else {
+                        let thisRole = message.guild.roles.find('id', role);
+                        list += `${thisRole.name}\n`;
+                    }
                 });
-                embed.addField("Roles:", list);
 
+                embed.addField("General Roles:", list);
                 message.channel.send(embed);
             });
 
@@ -572,7 +621,7 @@ commands.push(
     )
 );
 
-commands.push(
+roles.commands.push(
     new Command(
         'role',
         '',
@@ -590,7 +639,7 @@ commands.push(
                     value: '[]'
                 }
             }).then(config => {
-                let roles = JSON.parse(config.value);
+                let roles = JSON.parse(config[0].value);
 
                 if(args[1] === undefined) {
                     args[1] = "";
@@ -630,7 +679,7 @@ commands.push(
     )
 );
 
-commands.push(
+general.commands.push(
     new Command(
         'forceupdate',
         '',
@@ -680,10 +729,15 @@ function sendMessage(channel, message) {
     let embed = new Discord.RichEmbed()
         .setTimestamp()
         .setDescription(message)
-        .setColor(config.color);
+        .setColor(global_config.color);
 
     channel.send(embed);
 }
 
+commands.push(general);
+commands.push(administrative);
+commands.push(roles);
+commands.push(settings);
+commands.push(permissions);
 
 module.exports = commands;
