@@ -23,7 +23,6 @@ class Command {
     }
 }
 
-//TODO: allow commands to be grouped
 //TODO: allow for more detailed explanations of each command with !help <command_name>
 
 /**
@@ -551,7 +550,54 @@ roles.commands.push(
         [Discord.Permissions.FLAGS.ADMINISTRATOR],
         PERMISSIONS.NONE,
         function(message, args, db) {
-            // TODO: Add functionality
+            db.ServerConfigParam.findOrCreate({
+                where: {
+                    server_id: message.guild.id,
+                    name: 'roles'
+                },
+                defaults: {
+                    value: '[]'
+                }
+            }).then(config => {
+                let roles = JSON.parse(config[0].value);
+                let newRoles = roles;
+                let found = false;
+
+                //remove any existing role from the list
+                roles.filter((role, index) => {
+                    if (typeof role === typeof "") {
+                        if(message.guild.roles.find('name', role).name === args[2]) {
+                            return false;
+                        } else {
+                            return true
+                        }
+                    } else { //it is nested
+                        role.roles.filter((nested, nestedIndex) => {
+                            if(message.guild.roles.find('name', nested).name === args[2]) {
+                                return false;
+                            }
+                            else {
+                                return true;
+                            }
+                        });
+                        if(role.roles.length > 0) return true;
+                        else return false;
+                    }
+                });
+
+                found = false;
+                roles.forEach(role => {
+                    if (typeof role === typeof {}) {
+                        if(role.name === args[1]) { // if this is the group we are looking for
+                            found = true;
+                        }
+                    }
+                });
+
+                config[0].value = JSON.stringify(roles);
+                config[0].save();
+                // TODO: Add response to show the action completed
+            });
         }
     )
 );
