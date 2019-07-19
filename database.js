@@ -70,10 +70,16 @@ const Message = sequelize.define('message', {
     server_id: {
         type: Sequelize.STRING,
     },
+    channel_id: {
+        type: Sequelize.STRING,
+    },
     member_id: {
         type: Sequelize.STRING,
     },
-    message: {
+    content: {
+        type: Sequelize.STRING
+    },
+    type: {
         type: Sequelize.STRING
     }
 });

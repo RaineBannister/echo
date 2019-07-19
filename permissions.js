@@ -13,6 +13,7 @@ const PERMISSIONS = {
     'PERMISSIONS': 7,
     'CLEAR': 8,
     'MUTE': 9,
+    'LOGS': 10
 };
 
 PERMISSIONS.key = function( value ) {

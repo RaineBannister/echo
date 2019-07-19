@@ -13,71 +13,86 @@ let db = require('./database');
 const client = new Discord.Client();
 let fs = require('fs');
 const config = JSON.parse(fs.readFileSync('config.json'));
-
+let filter = require('./language-filter');
+let filtered_words = [];
 
 const token = config.key;
 
 //TODO: Set up a separate system for throttling messages being sent
 
 client.on('channelCreate', (channel) => {
-    let log = generateLog();
-
-    // Make sure it is a guild channel
-    if(["text","voice","category"].includes(channel.type)) {
-        log.setTitle(`Channel ${channel.name} was created`);
-        sendLog(channel.guild, log);
-    }
+	if(channel.type !== 'text') return;
+    db.Message.create({
+        server_id: channel.guild.id,
+        member_id: channel.id.client.user.id,
+        channel_id: channel.id,
+        content: channel.name,
+        type: "CHANNEL-CREATED"
+    });
 });
 
 client.on('channelDelete', (channel) => {
-    let log = generateLog();
-
-    // Make sure it is a guild channel
-    if(["text","voice","category"].includes(channel.type)) {
-        log.setTitle(`Channel ${channel.name} was deleted`);
-        sendLog(channel.guild, log);
-    }
+    db.Message.create({
+        server_id: channel.guild.id,
+        member_id: channel.id.client.user.id,
+        channel_id: channel.id,
+        content: channel.name,
+        type: "CHANNEL-DELETED"
+    });
 });
 
 client.on('channelPinsUpdate', (channel, time) => {
-    let log = generateLog();
-
-    // Make sure it is a guild channel
-    if(["text","voice","category"].includes(channel.type)) {
-        log.setTitle(`Channel ${channel.name}'s pins were updated`);
-        sendLog(channel.guild, log);
-    }
+    db.Message.create({
+        server_id: channel.guild.id,
+        member_id: channel.id.client.user.id,
+        channel_id: channel.id,
+        content: channel.name,
+        type: "CHANNEL-PINS_UPDATE"
+    });
 });
 
 client.on('channelUpdate', (oldChannel, newChannel) => {
-    let log = generateLog();
 
-    // Make sure it is a guild channel
-    if(["text","voice","category"].includes(newChannel.type)) {
-        log.setTitle(`Channel ${newChannel.name}'s was updated`);
-        sendLog(newChannel.guild, log);
-    }
+    // TODO: Actually check what was updated (and if it was relevant)
+    db.Message.create({
+        server_id: newChannel.guild.id,
+        member_id: 0,
+        channel_id: newChannel.id,
+        content: newChannel.name,
+        type: "CHANNEL-UPDATED"
+    });
 });
 
 client.on('emojiCreate', (emoji) => {
-    let log = generateLog();
-
-    log.setTitle(`Emoji ${emoji.name} was created`);
-    sendLog(emoji.guild, log);
+    db.Message.create({
+        server_id: emoji.guild.id,
+        member_id: emoji.client.user.id,
+        channel_id: 0,
+        content: emoji.name,
+        type: "EMOJI-CREATED"
+    });
 });
 
 client.on('emojiDelete', (emoji) => {
-    let log = generateLog();
-
-    log.setTitle(`Emoji ${emoji.name} was deleted`);
-    sendLog(emoji.guild, log);
+    db.Message.create({
+        server_id: emoji.guild.id,
+        member_id: emoji.client.user.id,
+        channel_id: 0,
+        content: emoji.name,
+        type: "EMOJI-DELETED"
+    });
 });
 
 client.on('emojiUpdate', (oldEmoji, newEmoji) => {
-    let log = generateLog();
 
-    log.setTitle(`Emoji ${newEmoji.name} was updated`);
-    sendLog(newEmoji.guild, log);
+    // TODO: Actually check what was updated so that we can see relevant information
+    db.Message.create({
+        server_id: newEmoji.guild.id,
+        member_id: newEmoji.client.user.id,
+        channel_id: 0,
+        content: newEmoji.name,
+        type: "EMOJI-UPDATED"
+    });
 });
 
 client.on('error', (error) => {
@@ -85,21 +100,28 @@ client.on('error', (error) => {
 });
 
 client.on('guildBanAdd', (guild, user) => {
-    let log = generateLog();
-
-    log.setTitle(`User ${user.username} has been banned`);
-    sendLog(guild, log);
+    db.Message.create({
+        server_id: guild.id,
+        member_id: user.id,
+        channel_id: 0,
+        content: user.username,
+        type: "MEMBER-BANNED"
+    });
 });
 
 client.on('guildBanRemove', (guild, user) => {
-    let log = generateLog();
-
-    log.setTitle(`User ${user.username} has been unbanned`);
-    sendLog(guild, log);
+    db.Message.create({
+        server_id: guild.id,
+        member_id: user.id,
+        channel_id: 0,
+        content: user.username,
+        type: "MEMBER-UNBANNED"
+    });
 });
 
 client.on('guildCreate', (guild) => {
     // This is called when we join a server
+    // TODO: investigate if we need to add everything at this time...
 });
 
 client.on('guildMemberAdd', member => {
@@ -182,7 +204,7 @@ client.on('guildMemberAdd', member => {
 
     db.ServerConfigParam.findOrCreate({
         where: {
-            server_id: message.guild.id,
+            server_id: member.guild.id,
             name: 'welcome-message'
         },
         defaults: {
@@ -194,9 +216,13 @@ client.on('guildMemberAdd', member => {
         member.send(welcomeMessage.value);
     });
 
-    let log = generateLog();
-    log.setTitle(`User ${member.user.username} joined the server`);
-    sendLog(member.guild, log);
+    db.Message.create({
+        server_id: member.guild.id,
+        member_id: member.id,
+        channel_id: 0,
+        content: member.user.username,
+        type: "MEMBER-JOINED"
+    });
 });
 
 client.on('guildMemberRemove', member => {
@@ -217,11 +243,9 @@ client.on('guildMemberRemove', member => {
         }
     } catch(e) {}*/
 
-    // TODO: Send goodbye message
-
     db.ServerConfigParam.findOrCreate({
         where: {
-            server_id: message.guild.id,
+            server_id: member.guild.id,
             name: 'welcome-channel'
         },
         defaults: {
@@ -243,9 +267,13 @@ client.on('guildMemberRemove', member => {
 
     });
 
-    let log = generateLog();
-    log.setTitle(`User ${member.user.username} has left the server`);
-    sendLog(member.guild, log);
+    db.Message.create({
+        server_id: member.guild.id,
+        member_id: member.id,
+        channel_id: 0,
+        content: member.user.username,
+        type: "MEMBER-LEFT"
+    });
 });
 
 client.on('guildMemberUpdate', (oldMember, newMember) => {
@@ -258,11 +286,14 @@ client.on('guildMemberUpdate', (oldMember, newMember) => {
 
     // TODO: Update db to match user's roles
     // TODO: Update db to match user's name
-
-    let log = generateLog();
-
-    log.setTitle(`User ${newMember.user.username} has updated`);
-    sendLog(newMember.guild, log);
+    // TODO: Track what actually changes
+    db.Message.create({
+        server_id: newMember.guild.id,
+        member_id: newMember.id,
+        channel_id: 0,
+        content: newMember.user.username,
+        type: "MEMBER-UPDATED"
+    });
 });
 
 client.on('message', message => {
@@ -311,7 +342,7 @@ client.on('message', message => {
                             member_id: message.member.id
                         }
                     }).then((member) => {
-                        if(member.permissions.split(' ').includes(command.permission)) {
+                        if(member.permissions.trim().split(' ').includes(command.permission.toString())) {
                             hasPermission = true;
                         }
 
@@ -335,6 +366,7 @@ client.on('message', message => {
         if(com === 'help') {
             let embed = new Discord.RichEmbed()
                 .setColor(config.color)
+				.setThumbnail(config.icon)
                 .setTimestamp()
                 .setDescription(`Beep, Boop! ${message.member} here are some commands you can use!`)
                 .addField("!help", "Shows this help box")
@@ -359,7 +391,7 @@ client.on('message', message => {
                                 member_id: message.member.id
                             }
                         }).then((member) => {
-                            if(member.permissions.split(' ').includes(command.permission)) {
+                            if(member.permissions.trim().split(' ').includes(command.permission.toString)) {
                                 hasPermission = true;
                             }
 
@@ -388,26 +420,64 @@ client.on('message', message => {
         }
     }
 
+    // run the profanity check here
+	/*let filtered = filter.checkMessage(message.cleanContent, filtered_words)
+    if(filtered !== false) {
+        message.delete();
+		
+		let text = "";
+		for(let i = 0; i < filtered.length; i++) {
+			text += `[${filtered[i].join(' => ')}] `;
+		}
+		
+		db.Message.create({
+			server_id: message.guild.id,
+			member_id: message.member.id,
+			channel_id: message.channel.id,
+			content: text,
+			type: "FILTERED-WORDS"
+		});
+    }*/
+
     db.Message.create({
         server_id: message.guild.id,
         member_id: message.member.id,
-        message: message.content
+        channel_id: message.channel.id,
+        content: message.content,
+        type: "MESSAGE-SENT"
+    });
+
+    // TODO: Somehow save attachments to be viewed after deletion
+    message.attachments.array().forEach(attachment => {
+        db.Message.create({
+            server_id: message.guild.id,
+            member_id: message.member.id,
+            channel_id: message.channel.id,
+            content: attachment.url,
+            type: "MESSAGE-ATTACHMENT"
+        });
     });
 });
 
 client.on('messageDelete', (message) => {
-    let log = generateLog();
-    log.setTitle(`Message deleted`);
-    log.setDescription(`${message.cleanContent}`);
-    sendLog(message.guild, log);
+    db.Message.create({
+        server_id: message.guild.id,
+        member_id: message.member.id,
+        channel_id: message.channel.id,
+        content: message.content,
+        type: "MESSAGE-DELETED"
+    });
 });
 
 client.on('messageUpdate', (oldMessage, message) => {
     if(!message.author.bot) {
-        let log = generateLog();
-        log.setTitle(`Message edited`);
-        log.setDescription(`${message.cleanContent}`);
-        sendLog(message.guild, log);
+        db.Message.create({
+            server_id: message.guild.id,
+            member_id: message.member.id,
+            channel_id: message.channel.id,
+            content: message.content,
+            type: "MESSAGE-UPDATED"
+        });
     }
 });
 
@@ -440,30 +510,55 @@ client.on('ready', ()=> {
 
     // Set the current playing status
     client.user.setActivity(config.game, {type: config.type});
+
+    // load up the filtered words to cache them..
+    db.FilteredWord.findAll({
+        attributes: ['word']
+    }).then(words => {
+        words.forEach(word => {
+            filtered_words.push(word.word);
+        });
+    });
 });
 
 client.on('roleCreate', (role) => {
-    // TODO: Add role to DB
+    // TODO: Add role to DB (invesgate if needed here)
 
-    let log = generateLog();
-    sendLog(role.guild, log);
+    db.Message.create({
+        server_id: role.guild.id,
+        member_id: role.client.user.id,
+        channel_id: 0,
+        content: role.name,
+        type: "ROLE-CREATED"
+    });
 });
 
 client.on('roleDelete', (role) => {
-    let log = generateLog();
-    sendLog(role.guild, log);
+    db.Message.create({
+        server_id: role.guild.id,
+        member_id: role.client.user.id,
+        channel_id: 0,
+        content: role.name,
+        type: "ROLE-DELETED"
+    });
 });
 
 //update role
 client.on('roleUpdate', (oldRole, newRole) => {
     // TODO: Update role in DB
 
-    let log = generateLog();
-    sendLog(newRole.guild, log);
+    db.Message.create({
+        server_id: newRole.guild.id,
+        member_id: newRole.client.user.id,
+        channel_id: 0,
+        content: newRole.name,
+        type: "ROLE-UPDATED"
+    });
 });
 
 
 client.on('userUpdate', (oldUser, newUser) => {
+    // TODO: ???
     //let log = generateLog();
     //sendLog(newUser.guild, log);
 });
@@ -478,23 +573,6 @@ function sendMessage(channel, message, footer) {
         .setColor(config.color);
 
     channel.send(embed);
-}
-
-/**
- *
- * @returns {module:discord.js.RichEmbed}
- */
-function generateLog() {
-    return new Discord.RichEmbed()
-        .setTimestamp()
-        .setColor(config.color);
-}
-
-function sendLog(server, log) {
-    /*let logChannel = server.channels.get(db.servers[server.id].logChannel);
-    if(logChannel !== undefined) {
-        logChannel.send(log);
-    }*/
 }
 
 
